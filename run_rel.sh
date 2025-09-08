@@ -55,7 +55,9 @@ python "${CODE_DIR}/train.py" \
   --d-model "${DMODEL}" --layers "${LAYERS}" --heads "${HEADS}" --d-ff "${DFF}" \
   --dropout "${DROPOUT}" --batch-size "${BATCH_SIZE}" --lr "${LR}" --epochs "${EPOCHS}" \
   --patience "${PATIENCE}" --min-delta "${MIN_DELTA}" --seed "${SEED}" \
-  --save-dir "${CKPT_DIR}" --log-csv "${LOG_CSV}" --plot-png "${PLOT_PNG}"
+  --save-dir "${CKPT_DIR}" --log-csv "${LOG_CSV}" --plot-png "${PLOT_PNG}" \
+  --tokenizer spm --max-len "${MAX_LEN}" \
+  --spm-size-src 8000 --spm-size-tgt 8000 --spm-model-type bpe --spm-character-coverage 1.0
 
 cp -f "${CKPT_DIR}/${LOG_CSV}" "${LOG_DIR}/${LOG_CSV}"
 cp -f "${CKPT_DIR}/${PLOT_PNG}" "${LOG_DIR}/${PLOT_PNG}"
@@ -63,17 +65,12 @@ cp -f "${CKPT_DIR}/${PLOT_PNG}" "${LOG_DIR}/${PLOT_PNG}"
 BEST="${CKPT_DIR}/best.pt"
 test -f "${BEST}" || { echo "best.pt not found in ${CKPT_DIR}"; exit 2; }
 
-echo "===> Inference (greedy)"
-python "${CODE_DIR}/test.py" --ckpt "${BEST}" --src "${TEST_SENT}" \
-  --strategy greedy --max-len "${MAX_LEN}"
-
-echo "===> Inference (beam)"
-python "${CODE_DIR}/test.py" --ckpt "${BEST}" --src "${TEST_SENT}" \
-  --strategy beam --beam-size "${BEAM_SIZE}" --alpha "${ALPHA}" --max-len "${MAX_LEN}"
-
-echo "===> Inference (top-k)"
-python "${CODE_DIR}/test.py" --ckpt "${BEST}" --src "${TEST_SENT}" \
-  --strategy topk --topk "${TOPK}" --temperature "${TEMP}" --max-len "${MAX_LEN}"
+# Evaluate BLEU for greedy/beam/topk and write CSV
+echo "===> Evaluating BLEU (all strategies)"
+python "${CODE_DIR}/eval_all.py" \
+  --ckpt-dir "${CKPT_DIR}" \
+  --data-src "${DATA_DIR}/${SRC_FILE}" \
+  --data-tgt "${DATA_DIR}/${TGT_FILE}"
 
 echo "Done. Checkpoints in: ${CKPT_DIR}"
 echo "Loss CSV & plot in:  ${LOG_DIR}"

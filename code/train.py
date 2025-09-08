@@ -1,6 +1,6 @@
 # train.py — with descriptive checkpoint filenames
 
-import argparse, os, torch
+import argparse, os, torch, tempfile
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
@@ -11,8 +11,13 @@ from tqdm import tqdm
 
 from utils import (
     ParallelTextDataset, SimpleVocab, collate_pad, set_seed,
-    PAD_ID, BOS_ID, EOS_ID, corpus_bleu
+    PAD_ID, BOS_ID, EOS_ID, corpus_bleu, SentencePieceVocab
 )
+from typing import Any, cast
+try:
+    import sentencepiece as spm  # type: ignore
+except ImportError:
+    spm = None  # type: ignore
 from model import Transformer
 
 
@@ -86,6 +91,15 @@ def main():
     ap.add_argument("--min-delta", type=float, default=0.0)
     ap.add_argument("--log-csv", type=str, default="loss_log.csv")
     ap.add_argument("--plot-png", type=str, default="loss_curve.png")
+    # Tokenizer options
+    ap.add_argument("--tokenizer", choices=["basic","spm"], default="basic")
+    ap.add_argument("--spm-src-model", type=str, default=None, help="Path to pre-trained SentencePiece model for source")
+    ap.add_argument("--spm-tgt-model", type=str, default=None, help="Path to pre-trained SentencePiece model for target")
+    ap.add_argument("--spm-size-src", type=int, default=8000)
+    ap.add_argument("--spm-size-tgt", type=int, default=8000)
+    ap.add_argument("--spm-model-type", choices=["unigram","bpe","word","char"], default="unigram")
+    ap.add_argument("--spm-character-coverage", type=float, default=1.0)
+    ap.add_argument("--max-len", type=int, default=128)
     args = ap.parse_args()
 
     set_seed(args.seed)
@@ -96,19 +110,62 @@ def main():
         src_all = load_lines(args.data_src)
         tgt_all = load_lines(args.data_tgt)
     else:
-        src_all = ["minä pidän sinusta","kissa on matolla","aurinko paistaa","miten voit"] * 50
-        tgt_all = ["i like you","the cat is on the mat","the sun is shining","how are you"] * 50
+        print("No data provided")
+        exit(1)
 
     train_idx, val_idx, test_idx = split_indices(len(src_all), args.val_ratio, args.test_ratio, args.seed)
     src_train = [src_all[i] for i in train_idx]; tgt_train = [tgt_all[i] for i in train_idx]
     src_val   = [src_all[i] for i in val_idx];   tgt_val   = [tgt_all[i] for i in val_idx]
     src_test  = [src_all[i] for i in test_idx];  tgt_test  = [tgt_all[i] for i in test_idx]
 
-    src_vocab, tgt_vocab = build_vocab(src_train), build_vocab(tgt_train)
+    # Build tokenizers
+    if args.tokenizer == "spm":
+        assert spm is not None, "sentencepiece is not installed. Add it to dependencies."
+        os.makedirs(args.save_dir, exist_ok=True)
+        src_model_path = args.spm_src_model or os.path.join(args.save_dir, "src_spm.model")
+        tgt_model_path = args.spm_tgt_model or os.path.join(args.save_dir, "tgt_spm.model")
 
-    train_ds = ParallelTextDataset(src_train, tgt_train, src_vocab, tgt_vocab)
-    val_ds   = ParallelTextDataset(src_val, tgt_val, src_vocab, tgt_vocab)
-    test_ds  = ParallelTextDataset(src_test, tgt_test, src_vocab, tgt_vocab)
+        if args.spm_src_model is None:
+            with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as tmp:
+                tmp.write("\n".join(src_train))
+                tmp_path = tmp.name
+            spm.SentencePieceTrainer.Train(
+                input=tmp_path,
+                model_prefix=os.path.splitext(src_model_path)[0],
+                vocab_size=args.spm_size_src,
+                model_type=args.spm_model_type,
+                character_coverage=args.spm_character_coverage,
+                bos_id=-1, eos_id=-1, pad_id=-1, unk_id=0
+            )
+            os.unlink(tmp_path)
+            # Ensure final model path ends with .model
+            if not src_model_path.endswith(".model"):
+                src_model_path = os.path.splitext(src_model_path)[0] + ".model"
+
+        if args.spm_tgt_model is None:
+            with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as tmp:
+                tmp.write("\n".join(tgt_train))
+                tmp_path = tmp.name
+            spm.SentencePieceTrainer.Train(
+                input=tmp_path,
+                model_prefix=os.path.splitext(tgt_model_path)[0],
+                vocab_size=args.spm_size_tgt,
+                model_type=args.spm_model_type,
+                character_coverage=args.spm_character_coverage,
+                bos_id=-1, eos_id=-1, pad_id=-1, unk_id=0
+            )
+            os.unlink(tmp_path)
+            if not tgt_model_path.endswith(".model"):
+                tgt_model_path = os.path.splitext(tgt_model_path)[0] + ".model"
+
+        src_vocab = SentencePieceVocab(model_file=src_model_path)
+        tgt_vocab = SentencePieceVocab(model_file=tgt_model_path)
+    else:
+        src_vocab, tgt_vocab = build_vocab(src_train), build_vocab(tgt_train)
+
+    train_ds = ParallelTextDataset(src_train, tgt_train, src_vocab, tgt_vocab, max_len=args.max_len)
+    val_ds   = ParallelTextDataset(src_val, tgt_val, src_vocab, tgt_vocab, max_len=args.max_len)
+    test_ds  = ParallelTextDataset(src_test, tgt_test, src_vocab, tgt_vocab, max_len=args.max_len)
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True, collate_fn=collate_pad)
     val_loader   = DataLoader(val_ds, batch_size=args.batch_size, collate_fn=collate_pad)
@@ -177,8 +234,16 @@ def main():
         history["epoch"].append(e); history["train"].append(tr)
         history["val"].append(va);  history["test"].append(te)
 
-        ckpt={"epoch":e,"model_state":model.state_dict(),"opt_state":opt.state_dict(),
-              "src_vocab":src_vocab.itos,"tgt_vocab":tgt_vocab.itos,"args":vars(args)}
+        ckpt={"epoch":e,"model_state":model.state_dict(),"opt_state":opt.state_dict(),"args":vars(args)}
+        if args.tokenizer == "spm":
+            # store serialized proto to make evaluation self-contained
+            ckpt["tokenizer"] = "spm"
+            ckpt["src_spm_proto"] = cast(Any, src_vocab).sp.serialized_model_proto()
+            ckpt["tgt_spm_proto"] = cast(Any, tgt_vocab).sp.serialized_model_proto()
+        else:
+            ckpt["tokenizer"] = "basic"
+            ckpt["src_vocab"] = cast(Any, src_vocab).itos
+            ckpt["tgt_vocab"] = cast(Any, tgt_vocab).itos
 
         # save with descriptive name
         fname = f"{args.posenc}_epoch{e:03d}_train{tr:.4f}_val{va:.4f}.pt"

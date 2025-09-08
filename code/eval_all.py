@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 import argparse, os, re, csv, torch
 from typing import List, Tuple
-from utils import SimpleVocab, ParallelTextDataset, collate_pad, PAD_ID, BOS_ID, EOS_ID, corpus_bleu
+from utils import SimpleVocab, ParallelTextDataset, collate_pad, PAD_ID, BOS_ID, EOS_ID, corpus_bleu, SentencePieceVocab
 from model import Transformer
 
 # ---------- helpers ----------
@@ -21,6 +21,18 @@ def split_indices_head(n: int, val_ratio: float, test_ratio: float) -> Tuple[Lis
 
 def vocab_from_tokens(tokens: List[str]) -> SimpleVocab:
     return SimpleVocab(tokens)
+
+def load_vocabs_from_ckpt(ckpt):
+    tok = ckpt.get("tokenizer", "basic")
+    if tok == "spm" and ("src_spm_proto" in ckpt and "tgt_spm_proto" in ckpt):
+        src_vocab = SentencePieceVocab(model_proto=ckpt["src_spm_proto"])
+        tgt_vocab = SentencePieceVocab(model_proto=ckpt["tgt_spm_proto"])
+    else:
+        src_vocab = vocab_from_tokens(ckpt["src_vocab"]) if "src_vocab" in ckpt else None
+        tgt_vocab = vocab_from_tokens(ckpt["tgt_vocab"]) if "tgt_vocab" in ckpt else None
+        if src_vocab is None or tgt_vocab is None:
+            raise RuntimeError("Checkpoint missing vocabulary information. Re-train or include SPM protos.")
+    return src_vocab, tgt_vocab
 
 @torch.no_grad()
 def greedy_decode(model, src_ids, max_len=64):
@@ -76,7 +88,10 @@ def topk_sampling(model, src_ids, k=50, max_len=64, temperature=1.0):
 
 def decode_sentence(model, src_vocab, tgt_vocab, sent: str, strategy: str,
                     beam_size: int, alpha: float, topk: int, temperature: float, max_len: int, device: str):
-    s_ids = [src_vocab.stoi.get(tok, 0) for tok in ["<bos>"] + sent.strip().split() + ["<eos>"]]
+    if hasattr(src_vocab, "is_spm") and getattr(src_vocab, "is_spm"):
+        s_ids = src_vocab.encode_sentence(sent.strip(), add_bos_eos=True, max_len=max_len)
+    else:
+        s_ids = [src_vocab.stoi.get(tok, 0) for tok in ["<bos>"] + sent.strip().split() + ["<eos>"]]
     src_tensor = torch.tensor(s_ids, dtype=torch.long, device=device).unsqueeze(0)
     if strategy == "greedy":
         out = greedy_decode(model, src_tensor, max_len=max_len)
@@ -104,12 +119,12 @@ def main():
     ap.add_argument("--out-csv", type=str, default=None)
     args = ap.parse_args()
 
-    # list checkpoints
-    ckpts = [os.path.join(args.ckpt_dir, f) for f in os.listdir(args.ckpt_dir) if f.endswith(".pt")]
-    if not ckpts:
-        raise SystemExit(f"No .pt files in {args.ckpt_dir}")
-    ckpts.sort(key=lambda p: (os.path.basename(p) != "best.pt", os.path.basename(p)))
-    print(f"[info] evaluating {len(ckpts)} checkpoints from {args.ckpt_dir}")
+    # only evaluate best.pt
+    best_path = os.path.join(args.ckpt_dir, "best.pt")
+    if not os.path.isfile(best_path):
+        raise SystemExit(f"best.pt not found in {args.ckpt_dir}")
+    ckpts = [best_path]
+    print(f"[info] evaluating best.pt from {args.ckpt_dir}")
 
     # load data + build test split once (per ckpt we only reuse indices)
     src_all = load_lines(args.data_src)
@@ -140,8 +155,7 @@ def main():
         tgt_test = [tgt_all[i] for i in test_idx]
 
         # vocab + model
-        src_vocab = vocab_from_tokens(ckpt["src_vocab"])
-        tgt_vocab = vocab_from_tokens(ckpt["tgt_vocab"])
+        src_vocab, tgt_vocab = load_vocabs_from_ckpt(ckpt)
 
         model = Transformer(
             src_vocab_size=len(src_vocab),
