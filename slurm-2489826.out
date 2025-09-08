@@ -1,0 +1,26 @@
+==========================================
+SLURM_JOB_ID = 2489826
+SLURM_NODELIST = gnode071
+SLURM_JOB_GPUS = 0
+==========================================
+===> Evaluating all checkpoints in: /scratch/akr/eub_relbias_20250907_082254/checkpoints
+===> Data: data/EUbookshop.fi  |  data/EUbookshop.en
+===> Strategies: greedy, beam(size=5, alpha=0.7), top-k(k=50, temp=0.9)
+===> Split mode: perm
+===> Max decode len: 96
+===> Out CSV: bleu_all_strategies.csv
+
+[info] evaluating 12 checkpoints from /scratch/akr/eub_relbias_20250907_082254/checkpoints
+
+[ckpt] best.pt
+[done] best.pt  greedy  BLEU=0.0234  n=2000
+[done] best.pt  beam    BLEU=0.0361  n=2000
+[done] best.pt  topk    BLEU=0.0211  n=2000
+
+[ckpt] relbias_epoch001_train5.6939_val5.0401.pt
+Traceback (most recent call last):
+  File "/home2/akr/ANLP/a1/code/eval_all.py", line 217, in <module>
+    
+  File "/home2/akr/ANLP/a1/code/eval_all.py", line 179, in main
+    m = re.search(r"epoch(\d+)_train([0-9.]+)_val([0-9.]+)", base)
+ValueError: could not convert string to float: '5.0401.'
