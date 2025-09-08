@@ -1,0 +1,32 @@
+==========================================
+SLURM_JOB_ID = 2490789
+SLURM_NODELIST = gnode044
+SLURM_JOB_GPUS = 0
+==========================================
+===> Evaluating best.pt in: /scratch/akr/rel
+===> Data: data/EUbookshop.fi  |  data/EUbookshop.en
+===> Strategies: greedy, beam(size=5, alpha=0.7), top-k(k=50, temp=0.9)
+===> Split mode: perm
+===> Max decode len: 96
+===> Progress bar: enabled
+===> Tokenizer: SentencePiece
+===> SPM src: /scratch/akr/rel/spm/src_spm.model
+===> SPM tgt: /scratch/akr/rel/spm/tgt_spm.model
+===> Out CSV: bleu_all_strategies.csv
+
+[info] evaluating best.pt from /scratch/akr/rel
+[info] evaluating /scratch/akr/rel/best.pt
+[info] loaded model from /scratch/akr/rel/best.pt
+[info] using SentencePiece models from CLI overrides
+Traceback (most recent call last):
+  File "/home2/akr/ANLP/a1/code/test.py", line 266, in <module>
+    main()
+  File "/home2/akr/ANLP/a1/code/test.py", line 186, in main
+    src_vocab, tgt_vocab = load_vocabs_from_ckpt(ckpt)
+  File "/home2/akr/ANLP/a1/code/test.py", line 34, in load_vocabs_from_ckpt
+    src_vocab = SentencePieceVocab(model_proto=ckpt["src_spm_proto"])
+  File "/home2/akr/ANLP/a1/code/utils.py", line 35, in __init__
+    self.sp.LoadFromSerializedProto(model_proto)
+  File "/home2/akr/ANLP/a1/.venv/lib/python3.10/site-packages/sentencepiece/__init__.py", line 256, in LoadFromSerializedProto
+    return _sentencepiece.SentencePieceProcessor_LoadFromSerializedProto(self, serialized)
+RuntimeError: Internal: src/sentencepiece_processor.cc(237) [model_proto->ParseFromArray(serialized.data(), serialized.size())] 

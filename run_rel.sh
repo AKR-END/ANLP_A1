@@ -5,7 +5,7 @@
 #SBATCH --mem-per-cpu=3G
 #SBATCH --time=5-00:00:00
 #SBATCH --mail-type=END
-#SBATCH -w gnode071
+#SBATCH -w gnode087
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -21,16 +21,16 @@ LOG_DIR="${LOG_DIR:-${EXP_DIR}/logs}"
 mkdir -p "${CKPT_DIR}" "${LOG_DIR}"
 
 POSENC="${POSENC:-relbias}"       # relbias
-DMODEL="${DMODEL:-320}"
-LAYERS="${LAYERS:-5}"
-HEADS="${HEADS:-5}"
-DFF="${DFF:-1280}"
+DMODEL="${DMODEL:-512}"
+LAYERS="${LAYERS:-3}"
+HEADS="${HEADS:-8}"
+DFF="${DFF:-2048}"
 DROPOUT="${DROPOUT:-0.1}"
 BATCH_SIZE="${BATCH_SIZE:-32}"
 LR="${LR:-3e-4}"
 EPOCHS="${EPOCHS:-20}"
-VAL_RATIO="${VAL_RATIO:-0.02}"
-TEST_RATIO="${TEST_RATIO:-0.02}"
+VAL_RATIO="${VAL_RATIO:-0.05}"
+TEST_RATIO="${TEST_RATIO:-0.05}"
 PATIENCE="${PATIENCE:-5}"
 MIN_DELTA="${MIN_DELTA:-0.0005}"
 SEED="${SEED:-42}"

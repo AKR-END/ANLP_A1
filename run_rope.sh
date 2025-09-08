@@ -5,7 +5,7 @@
 #SBATCH --mem-per-cpu=3G
 #SBATCH --time=5-00:00:00
 #SBATCH --mail-type=END
-#SBATCH -w gnode092
+#SBATCH -w gnode087
 set -euo pipefail
 
 # ---- Paths (relative to repo root ANLP/a1) ----
