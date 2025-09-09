@@ -5,7 +5,7 @@
 #SBATCH --mem-per-cpu=3G
 #SBATCH --time=5-00:00:00
 #SBATCH --mail-type=END
-#SBATCH -w gnode087
+#SBATCH -w gnode047
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -22,12 +22,12 @@ mkdir -p "${CKPT_DIR}" "${LOG_DIR}"
 
 POSENC="${POSENC:-relbias}"       # relbias
 DMODEL="${DMODEL:-512}"
-LAYERS="${LAYERS:-3}"
+LAYERS="${LAYERS:-4}"
 HEADS="${HEADS:-8}"
 DFF="${DFF:-2048}"
 DROPOUT="${DROPOUT:-0.1}"
-BATCH_SIZE="${BATCH_SIZE:-32}"
-LR="${LR:-3e-4}"
+BATCH_SIZE="${BATCH_SIZE:-64}"
+LR="${LR:-5e-4}"
 EPOCHS="${EPOCHS:-20}"
 VAL_RATIO="${VAL_RATIO:-0.05}"
 TEST_RATIO="${TEST_RATIO:-0.05}"
@@ -38,12 +38,11 @@ SEED="${SEED:-42}"
 LOG_CSV="${LOG_CSV:-loss_log.csv}"
 PLOT_PNG="${PLOT_PNG:-loss_curve.png}"
 
-MAX_LEN="${MAX_LEN:-96}"
+MAX_LEN="${MAX_LEN:-128}"
 BEAM_SIZE="${BEAM_SIZE:-5}"
 ALPHA="${ALPHA:-0.7}"
 TOPK="${TOPK:-50}"
 TEMP="${TEMP:-0.9}"
-TEST_SENT="${TEST_SENT:-miten voit}"
 
 source .venv/bin/activate
 echo "===> Training (${POSENC}) -> ${CKPT_DIR}"
@@ -57,20 +56,33 @@ python "${CODE_DIR}/train.py" \
   --patience "${PATIENCE}" --min-delta "${MIN_DELTA}" --seed "${SEED}" \
   --save-dir "${CKPT_DIR}" --log-csv "${LOG_CSV}" --plot-png "${PLOT_PNG}" \
   --tokenizer spm --max-len "${MAX_LEN}" \
-  --spm-size-src 8000 --spm-size-tgt 8000 --spm-model-type bpe --spm-character-coverage 1.0
+  --spm-size-src 12000 --spm-size-tgt 10000 --spm-model-type bpe --spm-character-coverage 1.0
 
 cp -f "${CKPT_DIR}/${LOG_CSV}" "${LOG_DIR}/${LOG_CSV}"
 cp -f "${CKPT_DIR}/${PLOT_PNG}" "${LOG_DIR}/${PLOT_PNG}"
 
-BEST="${CKPT_DIR}/best.pt"
-test -f "${BEST}" || { echo "best.pt not found in ${CKPT_DIR}"; exit 2; }
+# Find the latest epoch checkpoint
+LATEST_CKPT=$(ls -t "${CKPT_DIR}"/*_epoch*.pt 2>/dev/null | head -n 1)
+if [[ -z "${LATEST_CKPT}" ]]; then
+    echo "No epoch checkpoint found in ${CKPT_DIR}"; exit 2
+fi
+echo "===> Using latest checkpoint: $(basename "${LATEST_CKPT}")"
 
 # Evaluate BLEU for greedy/beam/topk and write CSV
 echo "===> Evaluating BLEU (all strategies)"
-python "${CODE_DIR}/eval_all.py" \
-  --ckpt-dir "${CKPT_DIR}" \
+python "${CODE_DIR}/test.py" \
+  --ckpt-path "${LATEST_CKPT}" \
   --data-src "${DATA_DIR}/${SRC_FILE}" \
-  --data-tgt "${DATA_DIR}/${TGT_FILE}"
+  --data-tgt "${DATA_DIR}/${TGT_FILE}" \
+  --split-mode perm \
+  --beam-size "${BEAM_SIZE}" \
+  --alpha "${ALPHA}" \
+  --topk "${TOPK}" \
+  --temperature "${TEMP}" \
+  --max-len "${MAX_LEN}" \
+  --progress \
+  --src-spm-proto "${CKPT_DIR}/src_spm.model" \
+  --tgt-spm-proto "${CKPT_DIR}/tgt_spm.model"
 
 echo "Done. Checkpoints in: ${CKPT_DIR}"
 echo "Loss CSV & plot in:  ${LOG_DIR}"

@@ -119,7 +119,7 @@ def decode_sentence(model, src_vocab, tgt_vocab, sent: str, strategy: str,
 # ---------- main ----------
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--ckpt-dir", required=True)
+    ap.add_argument("--ckpt-path", required=True, help="Path to specific checkpoint file (.pt)")
     ap.add_argument("--data-src", required=True)
     ap.add_argument("--data-tgt", required=True)
     ap.add_argument("--split-mode", choices=["perm", "head"], default="perm",
@@ -141,12 +141,10 @@ def main():
                     help="Path to target SentencePiece model proto (.model). Forces tokenizer=spm")
     args = ap.parse_args()
 
-    # only evaluate best.pt
-    print(f"[info] evaluating best.pt from {args.ckpt_dir}")
-    best_path = os.path.join(args.ckpt_dir, "best.pt")
-    if not os.path.isfile(best_path):
-        raise SystemExit(f"best.pt not found in {args.ckpt_dir}")
-    ckpts = [best_path]
+    # evaluate the specified checkpoint
+    if not os.path.isfile(args.ckpt_path):
+        raise SystemExit(f"Checkpoint file not found: {args.ckpt_path}")
+    ckpts = [args.ckpt_path]
 
     # load data + build test split once (per ckpt we only reuse indices)
     src_all = load_lines(args.data_src)
@@ -232,9 +230,12 @@ def main():
 
             bleu = corpus_bleu(refs, hyps, max_n=4, smooth=True)
             # parse epoch from filename if present
-            m = re.search(r"epoch(\d+)_train([0-9.]+)_val([0-9.]+)(?:\.pt)?", base)
+            m = re.search(r"epoch(\d+)_train([0-9.]+)_val([0-9.]+?)(?:\.pt)?", base)
             epoch = int(m.group(1)) if m else ckpt.get("epoch", -1)
-            val_loss = float(m.group(3)) if m else float("nan")
+            val_loss_str = m.group(3) if m else "nan"
+            # Remove trailing period if present
+            val_loss_str = val_loss_str.rstrip('.')
+            val_loss = float(val_loss_str) if val_loss_str != "nan" else float("nan")
 
             row = {
                 "checkpoint": base,
@@ -251,8 +252,14 @@ def main():
             all_rows.append(row)
             print(f"[done] {base}  {strategy:<6}  BLEU={bleu:.4f}  n={len(hyps)}")
 
-    # write CSV
-    out_csv = args.out_csv or os.path.join(args.ckpt_dir, "bleu_all_strategies.csv")
+    # write CSV with checkpoint-specific filename
+    if args.out_csv:
+        out_csv = args.out_csv
+    else:
+        # Extract checkpoint name without extension and directory
+        checkpoint_name = os.path.splitext(os.path.basename(args.ckpt_path))[0]
+        checkpoint_dir = os.path.dirname(args.ckpt_path)
+        out_csv = os.path.join(checkpoint_dir, f"{checkpoint_name}_bleu.csv")
     with open(out_csv, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=[
             "checkpoint","epoch","val_loss","strategy","beam_size","topk","temperature","max_len","test_size","bleu"

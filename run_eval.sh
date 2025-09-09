@@ -16,11 +16,14 @@ DATA_DIR="${DATA_DIR:-data}"
 SRC_FILE="${SRC_FILE:-EUbookshop.fi}"
 TGT_FILE="${TGT_FILE:-EUbookshop.en}"
 
-# Where your training saved checkpoints
-CKPT_DIR="${CKPT_DIR:-/scratch/akr/rope}"
+# Path to specific checkpoint file
+CKPT_PATH="${CKPT_PATH:-/scratch/akr/rope/rope_epoch010_train2.4517_val3.6886.pt}"
 
-# Output CSV (defaults to ckpt dir if not set)
-OUT_CSV="${OUT_CSV:-bleu_all_strategies.csv}"
+# Directory where CSV output will be saved
+OUTPUT_DIR="${OUTPUT_DIR:-/scratch/akr/rel}"
+
+# Output CSV (defaults to checkpoint-specific name if not set)
+OUT_CSV="${OUT_CSV:-}"
 
 # Split reproduction: "perm" (random-permutation) or "head" (contiguous head)
 SPLIT_MODE="${SPLIT_MODE:-perm}"
@@ -48,11 +51,11 @@ TGT_SPM_PROTO="${TGT_SPM_PROTO:-/scratch/akr/rope/spm/tgt_spm.model}"
 
 source ".venv/bin/activate"
 
-mkdir -p "${CKPT_DIR}"
+mkdir -p "${OUTPUT_DIR}"
 
 # Build command
 cmd=( python -u "${CODE_DIR}/test.py"
-      --ckpt-dir "${CKPT_DIR}"
+      --ckpt-path "${CKPT_PATH}"
       --data-src "${DATA_DIR}/${SRC_FILE}"
       --data-tgt "${DATA_DIR}/${TGT_FILE}"
       --split-mode "${SPLIT_MODE}"
@@ -75,9 +78,13 @@ fi
 
 if [[ -n "${OUT_CSV}" ]]; then
   cmd+=( --out-csv "${OUT_CSV}" )
+else
+  # Generate default CSV name based on checkpoint
+  checkpoint_name=$(basename "${CKPT_PATH}" .pt)
+  cmd+=( --out-csv "${OUTPUT_DIR}/${checkpoint_name}_bleu.csv" )
 fi
 
-echo "===> Evaluating best.pt in: ${CKPT_DIR}"
+echo "===> Evaluating checkpoint: ${CKPT_PATH}"
 echo "===> Data: ${DATA_DIR}/${SRC_FILE}  |  ${DATA_DIR}/${TGT_FILE}"
 echo "===> Strategies: greedy, beam(size=${BEAM_SIZE}, alpha=${ALPHA}), top-k(k=${TOPK}, temp=${TEMP})"
 echo "===> Split mode: ${SPLIT_MODE}"
@@ -93,10 +100,20 @@ if [[ -n "${SRC_SPM_PROTO}" && -n "${TGT_SPM_PROTO}" ]]; then
   echo "===> SPM src: ${SRC_SPM_PROTO}"
   echo "===> SPM tgt: ${TGT_SPM_PROTO}"
 fi
-echo "===> Out CSV: ${OUT_CSV:-<ckpt-dir>/bleu_all_strategies.csv}"
+if [[ -n "${OUT_CSV}" ]]; then
+  echo "===> Out CSV: ${OUT_CSV}"
+else
+  checkpoint_name=$(basename "${CKPT_PATH}" .pt)
+  echo "===> Out CSV: ${OUTPUT_DIR}/${checkpoint_name}_bleu.csv"
+fi
 echo
 
 "${cmd[@]}"
 
 echo
-echo "Done. CSV is at: ${OUT_CSV:-${CKPT_DIR}/bleu_all_strategies.csv}"
+if [[ -n "${OUT_CSV}" ]]; then
+  echo "Done. CSV is at: ${OUT_CSV}"
+else
+  checkpoint_name=$(basename "${CKPT_PATH}" .pt)
+  echo "Done. CSV is at: ${OUTPUT_DIR}/${checkpoint_name}_bleu.csv"
+fi

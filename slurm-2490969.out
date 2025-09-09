@@ -1,0 +1,6 @@
+==========================================
+SLURM_JOB_ID = 2490969
+SLURM_NODELIST = gnode044
+SLURM_JOB_GPUS = 0
+==========================================
+mkdir: cannot create directory ‘/scratch/akr/rope/rope_epoch010_train2.4517_val3.6886.pt’: File exists
