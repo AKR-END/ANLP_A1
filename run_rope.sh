@@ -5,7 +5,7 @@
 #SBATCH --mem-per-cpu=3G
 #SBATCH --time=5-00:00:00
 #SBATCH --mail-type=END
-#SBATCH -w gnode047
+#SBATCH -w gnode069
 set -euo pipefail
 
 # ---- Paths (relative to repo root ANLP/a1) ----
@@ -25,13 +25,13 @@ mkdir -p "${CKPT_DIR}" "${LOG_DIR}"
 # ---- Model / training defaults tuned for 2080 Ti (11GB) ----
 POSENC="${POSENC:-rope}"          # rope
 DMODEL="${DMODEL:-512}"
-LAYERS="${LAYERS:-4}"
+LAYERS="${LAYERS:-6}"
 HEADS="${HEADS:-8}"
 DFF="${DFF:-2048}"
 DROPOUT="${DROPOUT:-0.1}"
-BATCH_SIZE="${BATCH_SIZE:-64}"    # drop to 64 if OOM
-LR="${LR:-5e-4}"
-EPOCHS="${EPOCHS:-20}"
+BATCH_SIZE="${BATCH_SIZE:-32}"    # drop to 64 if OOM
+LR="${LR:-1e-4}"
+EPOCHS="${EPOCHS:-50}"
 VAL_RATIO="${VAL_RATIO:-0.05}"
 TEST_RATIO="${TEST_RATIO:-0.05}"
 PATIENCE="${PATIENCE:-5}"
@@ -60,7 +60,7 @@ python "${CODE_DIR}/train.py" \
   --patience "${PATIENCE}" --min-delta "${MIN_DELTA}" --seed "${SEED}" \
   --save-dir "${CKPT_DIR}" --log-csv "${LOG_CSV}" --plot-png "${PLOT_PNG}" \
   --tokenizer spm --max-len "${MAX_LEN}" \
-  --spm-size-src 12000 --spm-size-tgt 10000 --spm-model-type bpe --spm-character-coverage 1.0
+  --spm-size-src 32000 --spm-size-tgt 32000 --spm-model-type bpe --spm-character-coverage 1.0
 
 # Persist logs in a predictable place
 cp -f "${CKPT_DIR}/${LOG_CSV}" "${LOG_DIR}/${LOG_CSV}"

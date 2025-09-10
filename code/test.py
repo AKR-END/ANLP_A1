@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-import argparse, os, re, csv, torch
+import argparse, os, re, csv, torch, random
 from typing import List, Tuple
 from utils import SimpleVocab, ParallelTextDataset, collate_pad, PAD_ID, BOS_ID, EOS_ID, corpus_bleu, SentencePieceVocab
 from model import Transformer
@@ -116,6 +116,21 @@ def decode_sentence(model, src_vocab, tgt_vocab, sent: str, strategy: str,
         out = topk_sampling(model, src_tensor, k=topk, max_len=max_len, temperature=temperature)
     return tgt_vocab.decode(out[0].tolist())  # list[str], stops at EOS
 
+def pick_indices(n: int, k: int, mode: str, seed: int, indices_str: str = None) -> List[int]:
+    if k <= 0: return []
+    if mode == "indices":
+        assert indices_str, "--sample-indices must be provided when --sample-mode indices"
+        idxs = [int(x) for x in indices_str.split(",")]
+        for x in idxs:
+            if not (0 <= x < n):
+                raise ValueError(f"Sample index {x} out of range 0..{n-1}")
+        return idxs[:k]
+    if mode == "first":
+        return list(range(min(k, n)))
+    # random
+    rnd = random.Random(seed)
+    return rnd.sample(range(n), k if k <= n else n)
+
 # ---------- main ----------
 def main():
     ap = argparse.ArgumentParser()
@@ -139,6 +154,12 @@ def main():
                     help="Path to source SentencePiece model proto (.model). Forces tokenizer=spm")
     ap.add_argument("--tgt-spm-proto", type=str, default=None,
                     help="Path to target SentencePiece model proto (.model). Forces tokenizer=spm")
+    # NEW: sampling controls
+    ap.add_argument("--samples", type=int, default=3, help="Number of samples to print/save")
+    ap.add_argument("--sample-mode", choices=["random","first","indices"], default="random")
+    ap.add_argument("--sample-seed", type=int, default=42)
+    ap.add_argument("--sample-indices", type=str, default=None,
+                    help="Comma-separated 0-based indices into the test set (used when --sample-mode indices)")
     args = ap.parse_args()
 
     # evaluate the specified checkpoint
@@ -153,10 +174,10 @@ def main():
     n = len(src_all)
 
     all_rows = []
+    sample_rows = []  # NEW
 
     for path in ckpts:
         base = os.path.basename(path)
-        
         print(f"[info] evaluating {path}")
         ckpt = torch.load(path, map_location=args.device)
         print(f"[info] loaded model from {path}")
@@ -181,13 +202,18 @@ def main():
         else:
             _, _, test_idx = split_indices_head(n, val_ratio, test_ratio)
 
-        src_test = [src_all[i] for i in test_idx]
-        tgt_test = [tgt_all[i] for i in test_idx]
+        src_test_all = [src_all[i] for i in test_idx]
+        tgt_test_all = [tgt_all[i] for i in test_idx]
 
-        # optionally limit to the first N test examples
+        # optionally limit evaluation size
         if args.max_examples is not None:
-            src_test = src_test[:args.max_examples]
-            tgt_test = tgt_test[:args.max_examples]
+            src_test_all = src_test_all[:args.max_examples]
+            tgt_test_all = tgt_test_all[:args.max_examples]
+
+        # --- pick sample indices (within the *test* subset) ---
+        k = args.samples
+        sample_idx_local = pick_indices(len(src_test_all), k, args.sample_mode, args.sample_seed, args.sample_indices)
+        print(f"[samples] picking indices from test set (size={len(src_test_all)}): {sample_idx_local}")
 
         # vocab + model
         src_vocab, tgt_vocab = load_vocabs_from_ckpt(ckpt)
@@ -205,77 +231,61 @@ def main():
         model.load_state_dict(ckpt["model_state"])
         model.eval()
 
-        print(f"[info] loaded model from {path}")
-        
-        # decoding length
         max_len = args.max_len or int(ck_args.get("max_len", 96))
 
-        # run all strategies
-        for strategy in ("greedy", "beam", "topk"):
-            refs, hyps = [], []
-            # iterate with optional tqdm progress bar and slice like test_data[:N]
-            indices = range(len(src_test))
-            if args.progress and tqdm is not None:
-                indices = tqdm(indices, total=len(src_test))
-            for i in indices:
-                s = src_test[i]; t = tgt_test[i]
-                hyp_tok = decode_sentence(
-                    model, src_vocab, tgt_vocab, s, strategy,
-                    beam_size=args.beam_size, alpha=args.alpha,
-                    topk=args.topk, temperature=args.temperature,
-                    max_len=max_len, device=args.device
-                )
-                hyps.append(hyp_tok)
-                refs.append(t.strip().split())
-
-            bleu = corpus_bleu(refs, hyps, max_n=4, smooth=True)
-            # parse epoch from filename if present
-            m = re.search(r"epoch(\d+)_train([0-9.]+)_val([0-9.]+?)(?:\.pt)?", base)
-            epoch = int(m.group(1)) if m else ckpt.get("epoch", -1)
-            val_loss_str = m.group(3) if m else "nan"
-            # Remove trailing period if present
-            val_loss_str = val_loss_str.rstrip('.')
-            val_loss = float(val_loss_str) if val_loss_str != "nan" else float("nan")
+        # --- decode ONLY the selected samples and print/save them ---
+        printed = []
+        for i in sample_idx_local:
+            s = src_test_all[i]
+            t = tgt_test_all[i].strip().split()
+            g = decode_sentence(model, src_vocab, tgt_vocab, s, "greedy",
+                                beam_size=args.beam_size, alpha=args.alpha,
+                                topk=args.topk, temperature=args.temperature,
+                                max_len=max_len, device=args.device)
+            b = decode_sentence(model, src_vocab, tgt_vocab, s, "beam",
+                                beam_size=args.beam_size, alpha=args.alpha,
+                                topk=args.topk, temperature=args.temperature,
+                                max_len=max_len, device=args.device)
+            tp = decode_sentence(model, src_vocab, tgt_vocab, s, "topk",
+                                 beam_size=args.beam_size, alpha=args.alpha,
+                                 topk=args.topk, temperature=args.temperature,
+                                 max_len=max_len, device=args.device)
 
             row = {
                 "checkpoint": base,
-                "epoch": epoch,
-                "val_loss": val_loss,
-                "strategy": strategy,
-                "beam_size": args.beam_size if strategy=="beam" else "",
-                "topk": args.topk if strategy=="topk" else "",
-                "temperature": args.temperature if strategy=="topk" else "",
-                "max_len": max_len,
-                "test_size": len(hyps),
-                "bleu": bleu,
+                "idx": i,
+                "src": s,
+                "ref": " ".join(t),
+                "greedy": " ".join(g),
+                "beam": " ".join(b),
+                "topk": " ".join(tp),
             }
-            all_rows.append(row)
-            print(f"[done] {base}  {strategy:<6}  BLEU={bleu:.4f}  n={len(hyps)}")
+            sample_rows.append(row)
+            printed.append(row)
 
-    # write CSV with checkpoint-specific filename
+        # pretty print to stdout
+        print("\n=== Sample outputs (input / greedy / beam / top-k / reference) ===")
+        for r in printed:
+            print(f"\n[idx {r['idx']}]")
+            print(f"  SRC: {r['src']}")
+            print(f"  GRD: {r['greedy']}")
+            print(f"  BEM: {r['beam']}")
+            print(f"  TPK: {r['topk']}")
+            print(f"  REF: {r['ref']}")
+
+    # write samples CSV next to checkpoint (unless overridden)
     if args.out_csv:
         out_csv = args.out_csv
     else:
-        # Extract checkpoint name without extension and directory
         checkpoint_name = os.path.splitext(os.path.basename(args.ckpt_path))[0]
         checkpoint_dir = os.path.dirname(args.ckpt_path)
-        out_csv = os.path.join(checkpoint_dir, f"{checkpoint_name}_bleu.csv")
-    with open(out_csv, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=[
-            "checkpoint","epoch","val_loss","strategy","beam_size","topk","temperature","max_len","test_size","bleu"
-        ])
-        w.writeheader(); w.writerows(all_rows)
+        out_csv = os.path.join(checkpoint_dir, f"{checkpoint_name}_samples.csv")
 
-    # print top-3 per strategy
-    print("\n=== Leaderboards (by BLEU) ===")
-    for strat in ("greedy","beam","topk"):
-        subset = [r for r in all_rows if r["strategy"] == strat]
-        if subset:
-            top = sorted(subset, key=lambda r: r["bleu"], reverse=True)[:3]
-            print(f"\n[{strat}]")
-            for r in top:
-                print(f"{r['checkpoint']:<50} BLEU={r['bleu']:.4f}  epoch={r['epoch']}  val={r['val_loss']}")
-    print(f"\nSaved CSV → {out_csv}")
+    with open(out_csv, "w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=["checkpoint","idx","src","ref","greedy","beam","topk"])
+        w.writeheader(); w.writerows(sample_rows)
+
+    print(f"\nSaved samples CSV → {out_csv}")
     print("Done.")
 
 if __name__ == "__main__":

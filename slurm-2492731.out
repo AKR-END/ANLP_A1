@@ -1,0 +1,48 @@
+==========================================
+SLURM_JOB_ID = 2492731
+SLURM_NODELIST = gnode085
+SLURM_JOB_GPUS = 0
+==========================================
+===> Evaluating checkpoint: /scratch/akr/rope_epoch010_train2.4517_val3.6886.pt
+===> Data: data/EUbookshop.fi  |  data/EUbookshop.en
+===> Strategies: greedy, beam(size=5, alpha=0.7), top-k(k=50, temp=0.9)
+===> Split mode: perm
+===> Max decode len: 128
+===> Progress bar: enabled
+===> Tokenizer: SentencePiece
+===> SPM src: /scratch/akr/src_spm.model
+===> SPM tgt: /scratch/akr/tgt_spm.model
+===> Out CSV: /scratch/akr/rope_epoch010_train2.4517_val3.6886_bleu.csv
+
+[info] evaluating /scratch/akr/rope_epoch010_train2.4517_val3.6886.pt
+[info] loaded model from /scratch/akr/rope_epoch010_train2.4517_val3.6886.pt
+[info] using SentencePiece models from CLI overrides
+[samples] picking indices from test set (size=5000): [912, 204, 2253]
+
+=== Sample outputs (input / greedy / beam / top-k / reference) ===
+
+[idx 912]
+  SRC: Tuen Hänschin ehdotusta, että myös ne maat, joiden kanssa ei vielä neuvotella jäsenyydestä, otetaan mukaan monenkeskisiin neuvotteluihin, sillä tiedämme kuinka tärkeää tämä poliittisesti ja psykologisesti Keskija Itä-Euroopan maille on.
+  GRD: I would also like to congratulate the rapporteur, Mr Hoppenstedt, on the work he has done, and the rapporteur, Mr Oostlander, for the very positive work he has done.
+  BEM: I am pleased to see that there are countries which do not want to join the European Union.
+  TPK: I think the Commission has some positive. Firstly, this is a new proposal which will come to an end when it comes to the East, which is important for the people who are still willing to join the Union - like other countries - is a very important one - to make a success.
+  REF: I emphatically support what Mr Hänsch said about this: that those countries with which accession negotiations are not yet taking place should also have a seat at the table within a multilateral framework, because we know that this is of great political and psychological importance for the states of central and eastern Europe.
+
+[idx 204]
+  SRC: Euroopan Parlamentin keskustelut
+  GRD: The European Parliament has the power of the Council to take a decision on this matter.
+  BEM: The European Parliament's Committee of Inquiry into the Community Transit System
+  TPK: The Commission's proposal, which the European Parliament has a crucial role to play.
+  REF: Debates of the European Parliament
+
+[idx 2253]
+  SRC: Lopuksi haluaisin sanoa epäluottamuslauseen osalta, että kuten olette voineet todeta, arvoisa puheenjohtaja, suurin osa ryhmämme jäsenistä allekirjoittaa sen.
+  GRD: I should like to say that I have no reason to criticize the Commission, Mr Santer, and I would like to say that I am not convinced that the Commission has acted in its opinion on this matter.
+  BEM: Finally, I should like to say that the Commission, as the guardian of the Maastricht Treaty, has made it clear that the European Parliament has acted in its opinion on this matter.
+  TPK: It is the view of the Committee on Legal Affairs that it should pay more attention to BSE than it contains nothing.
+  REF: One of the things that has struck me particularly during this hearing is the situation between 1990 and 1994 when the BSE crisis was at its height.
+
+Saved samples CSV → /scratch/akr/rope_epoch010_train2.4517_val3.6886_bleu.csv
+Done.
+
+Done. CSV is at: /scratch/akr/rope_epoch010_train2.4517_val3.6886_bleu.csv

@@ -1,0 +1,17 @@
+==========================================
+SLURM_JOB_ID = 2492715
+SLURM_NODELIST = gnode085
+SLURM_JOB_GPUS = 0
+==========================================
+===> Evaluating checkpoint: /scratch/akr/rope_epoch010_train2.4517_val3.6886.pt
+===> Data: data/EUbookshop.fi  |  data/EUbookshop.en
+===> Strategies: greedy, beam(size=5, alpha=0.7), top-k(k=50, temp=0.9)
+===> Split mode: perm
+===> Max decode len: 128
+===> Progress bar: enabled
+===> Tokenizer: SentencePiece
+===> SPM src: /scratch/akr/src_spm.model
+===> SPM tgt: /scratch/akr/tgt_spm.model
+===> Out CSV: /scratch/akr//rope_epoch010_train2.4517_val3.6886_bleu.csv
+
+Checkpoint file not found: /scratch/akr/rope_epoch010_train2.4517_val3.6886.pt

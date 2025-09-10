@@ -5,7 +5,7 @@
 #SBATCH --mem-per-cpu=3G
 #SBATCH --time=5-00:00:00
 #SBATCH --mail-type=END
-#SBATCH -w gnode044
+#SBATCH -w gnode085
 set -euo pipefail
 
 # ---------------------------
@@ -17,10 +17,10 @@ SRC_FILE="${SRC_FILE:-EUbookshop.fi}"
 TGT_FILE="${TGT_FILE:-EUbookshop.en}"
 
 # Path to specific checkpoint file
-CKPT_PATH="${CKPT_PATH:-/scratch/akr/rope/rope_epoch010_train2.4517_val3.6886.pt}"
+CKPT_PATH="${CKPT_PATH:-/scratch/akr/rope_epoch010_train2.4517_val3.6886.pt}"
 
 # Directory where CSV output will be saved
-OUTPUT_DIR="${OUTPUT_DIR:-/scratch/akr/rel}"
+OUTPUT_DIR="${OUTPUT_DIR:-/scratch/akr}"
 
 # Output CSV (defaults to checkpoint-specific name if not set)
 OUT_CSV="${OUT_CSV:-}"
@@ -35,15 +35,15 @@ BEAM_SIZE="${BEAM_SIZE:-5}"
 ALPHA="${ALPHA:-0.7}"
 TOPK="${TOPK:-50}"
 TEMP="${TEMP:-0.9}"
-MAX_LEN="${MAX_LEN:-96}"
+MAX_LEN="${MAX_LEN:-128}"
 
 # Limit and progress UI (optional)
 MAX_EXAMPLES="${MAX_EXAMPLES:-}"
 PROGRESS="${PROGRESS:-1}"
 
 # SentencePiece models (optional). If both are provided, SPM will be used.
-SRC_SPM_PROTO="${SRC_SPM_PROTO:-/scratch/akr/rope/spm/src_spm.model}"
-TGT_SPM_PROTO="${TGT_SPM_PROTO:-/scratch/akr/rope/spm/tgt_spm.model}"
+SRC_SPM_PROTO="${SRC_SPM_PROTO:-/scratch/akr/src_spm.model}"
+TGT_SPM_PROTO="${TGT_SPM_PROTO:-/scratch/akr/tgt_spm.model}"
 
 # ---------------------------
 # Optional: auto-activate venv
@@ -63,7 +63,10 @@ cmd=( python -u "${CODE_DIR}/test.py"
       --alpha "${ALPHA}"
       --topk "${TOPK}"
       --temperature "${TEMP}"
-      --max-len "${MAX_LEN}" )
+      --max-len "${MAX_LEN}" 
+      --samples 3
+      --sample-mode random
+      --sample-seed 42)
 
 # Optional flags
 # if [[ -n "${MAX_EXAMPLES}" ]]; then
